@@ -1,0 +1,84 @@
+@page "/tournaments/new"
+@inject TournamentService TournamentService
+@inject BracketService BracketService
+@inject NavigationManager Nav
+
+<div class="topline">
+    <div>
+        <h1>Nowy turniej</h1>
+        <p>Podaj nazwę turnieju, dyscyplinę i listę zgłoszonych drużyn. Drabinka pucharowa zostanie
+        wygenerowana automatycznie — jeśli liczba drużyn nie jest potęgą dwójki, system dobierze wolne losy.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="field">
+        <label>Nazwa turnieju</label>
+        <input @bind="name" placeholder="np. Puchar Osiedla 2026" />
+    </div>
+    <div class="field">
+        <label>Dyscyplina</label>
+        <input @bind="sport" placeholder="np. piłka nożna 5x5" />
+    </div>
+    <div class="field">
+        <label>Opis (opcjonalnie)</label>
+        <input @bind="description" placeholder="krótki opis turnieju" />
+    </div>
+
+    <div class="field">
+        <label>Drużyny (min. 2)</label>
+        @for (int i = 0; i < teamNames.Count; i++)
+        {
+            var idx = i;
+            <div class="team-row">
+                <input value="@teamNames[idx]" @oninput="e => teamNames[idx] = e.Value?.ToString() ?? string.Empty"
+                       placeholder="@($"Drużyna {idx + 1}")" />
+                @if (teamNames.Count > 2)
+                {
+                    <button class="smallbtn" @onclick="() => RemoveTeam(idx)">Usuń</button>
+                }
+            </div>
+        }
+        <button class="smallbtn" @onclick="AddTeam">+ Dodaj drużynę</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="banner"><span>⚠</span><div>@error</div></div>
+    }
+
+    <button class="smallbtn primary" @onclick="Submit">Utwórz turniej i wygeneruj drabinkę</button>
+</div>
+
+@code {
+    private string name = string.Empty;
+    private string sport = string.Empty;
+    private string description = string.Empty;
+    private List<string> teamNames = new() { "", "", "", "" };
+    private string? error;
+
+    private void AddTeam() => teamNames.Add(string.Empty);
+    private void RemoveTeam(int idx) => teamNames.RemoveAt(idx);
+
+    private async Task Submit()
+    {
+        error = null;
+        var validNames = teamNames.Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            error = "Podaj nazwę turnieju.";
+            return;
+        }
+        if (validNames.Count < 2)
+        {
+            error = "Podaj co najmniej dwie drużyny.";
+            return;
+        }
+
+        var tournament = await TournamentService.CreateAsync(name, sport, description);
+        await BracketService.GenerateBracketAsync(tournament.Id, validNames);
+
+        Nav.NavigateTo($"tournaments/{tournament.Id}");
+    }
+}

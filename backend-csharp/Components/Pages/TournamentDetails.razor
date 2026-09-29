@@ -1,0 +1,147 @@
+@page "/tournaments/{Id:int}"
+@inject TournamentService TournamentService
+@inject BracketService BracketService
+
+@if (tournament is null)
+{
+    <p>Ładowanie…</p>
+}
+else
+{
+    <div class="topline">
+        <div>
+            <h1>@tournament.Name</h1>
+            <p>@tournament.Sport &middot; @tournament.Teams.Count(t => !t.IsBye) drużyn &middot;
+                <span class="tag @(StatusTagClass(tournament.Status))">@StatusLabel(tournament.Status)</span></p>
+        </div>
+        <div class="role-box">
+            <label>Tryb</label>
+            <select @bind="role">
+                <option value="organizer">Organizator</option>
+                <option value="viewer">Widz</option>
+            </select>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="banner"><span>⚠</span><div>@error</div></div>
+    }
+
+    <div class="bracket">
+        @foreach (var roundGroup in tournament.Matches.GroupBy(m => m.Round).OrderBy(g => g.Key))
+        {
+            <div class="bracket-round">
+                <div class="round-title">@RoundTitle(roundGroup.Key, tournament.RoundCount)</div>
+                <div class="bracket-matches">
+                    @foreach (var match in roundGroup.OrderBy(m => m.Position))
+                    {
+                        <div class="matchcard">
+                            @RenderTeamRow(match, isTeamA: true)
+                            @RenderTeamRow(match, isTeamA: false)
+
+                            @if (role == "organizer" && match.IsReady && !match.IsDecided)
+                            {
+                                <div class="score-row">
+                                    <input type="number" min="0" @bind="scoreInputsA[match.Id]" style="width:48px" />
+                                    <span>:</span>
+                                    <input type="number" min="0" @bind="scoreInputsB[match.Id]" style="width:48px" />
+                                    <button class="smallbtn" @onclick="() => SubmitResult(match.Id)">Zatwierdź</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Tournament? tournament;
+    private string role = "organizer";
+    private string? error;
+    private Dictionary<int, int> scoreInputsA = new();
+    private Dictionary<int, int> scoreInputsB = new();
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        tournament = await TournamentService.GetByIdAsync(Id);
+        if (tournament != null)
+        {
+            foreach (var m in tournament.Matches)
+            {
+                if (!scoreInputsA.ContainsKey(m.Id)) scoreInputsA[m.Id] = 0;
+                if (!scoreInputsB.ContainsKey(m.Id)) scoreInputsB[m.Id] = 0;
+            }
+        }
+    }
+
+    private async Task SubmitResult(int matchId)
+    {
+        error = null;
+        try
+        {
+            await BracketService.SubmitResultAsync(matchId, scoreInputsA[matchId], scoreInputsB[matchId]);
+            await Load();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private RenderFragment RenderTeamRow(Match match, bool isTeamA) => builder =>
+    {
+        var team = isTeamA ? match.TeamA : match.TeamB;
+        var score = isTeamA ? match.ScoreA : match.ScoreB;
+        var isWinner = match.IsDecided && match.WinnerId == (isTeamA ? match.TeamAId : match.TeamBId);
+
+        var name = team?.Name ?? "oczekuje…";
+        var cssClass = "teamrow" + (isWinner ? " winner" : "") + (team is null ? " pending" : "");
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", cssClass);
+        builder.OpenElement(2, "span");
+        builder.AddContent(3, name);
+        builder.CloseElement();
+        if (score != null)
+        {
+            builder.OpenElement(4, "b");
+            builder.AddContent(5, score.ToString());
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private static string RoundTitle(int round, int totalRounds)
+    {
+        int fromEnd = totalRounds - round;
+        return fromEnd switch
+        {
+            0 => "Finał",
+            1 => "Półfinał",
+            2 => "Ćwierćfinał",
+            _ => $"Runda {round}"
+        };
+    }
+
+    private static string StatusLabel(TournamentStatus s) => s switch
+    {
+        TournamentStatus.Rejestracja => "Rejestracja",
+        TournamentStatus.WTrakcie => "W trakcie",
+        TournamentStatus.Zakonczony => "Zakończony",
+        _ => s.ToString()
+    };
+
+    private static string StatusTagClass(TournamentStatus s) => s switch
+    {
+        TournamentStatus.Zakonczony => "ok",
+        TournamentStatus.WTrakcie => "warn",
+        _ => "ok"
+    };
+}

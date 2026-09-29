@@ -1,0 +1,65 @@
+@page "/tournaments"
+@inject TournamentService TournamentService
+
+<div class="topline">
+    <div>
+        <h1>Turnieje</h1>
+        <p>Lista wszystkich założonych turniejów.</p>
+    </div>
+    <a class="smallbtn" href="tournaments/new">+ Nowy turniej</a>
+</div>
+
+@if (tournaments is null)
+{
+    <p>Ładowanie…</p>
+}
+else if (tournaments.Count == 0)
+{
+    <div class="card">Brak turniejów. <a href="tournaments/new">Załóż pierwszy</a>.</div>
+}
+else
+{
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>Nazwa</th><th>Dyscyplina</th><th>Drużyny</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var t in tournaments)
+                {
+                    <tr>
+                        <td>@t.Name</td>
+                        <td>@t.Sport</td>
+                        <td>@t.Teams.Count</td>
+                        <td><span class="tag @(StatusTagClass(t.Status))">@StatusLabel(t.Status)</span></td>
+                        <td><a class="smallbtn" href="@($"tournaments/{t.Id}")">Otwórz</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<Tournament>? tournaments;
+
+    protected override async Task OnInitializedAsync()
+    {
+        tournaments = await TournamentService.GetAllAsync();
+    }
+
+    private static string StatusLabel(TournamentStatus s) => s switch
+    {
+        TournamentStatus.Rejestracja => "Rejestracja",
+        TournamentStatus.WTrakcie => "W trakcie",
+        TournamentStatus.Zakonczony => "Zakończony",
+        _ => s.ToString()
+    };
+
+    private static string StatusTagClass(TournamentStatus s) => s switch
+    {
+        TournamentStatus.Zakonczony => "ok",
+        TournamentStatus.WTrakcie => "warn",
+        _ => "ok"
+    };
+}
